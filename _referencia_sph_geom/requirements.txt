@@ -1,0 +1,8 @@
+pandas
+matplotlib
+numpy-stl
+pyvisfile
+Cython
+https://github.com/pypr/compyle/zipball/master
+https://github.com/pypr/pysph/zipball/master
+https://github.com/pypr/automan/zipball/master
