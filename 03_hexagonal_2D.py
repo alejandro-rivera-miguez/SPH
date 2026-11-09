@@ -22,6 +22,14 @@ H_FACTOR = 1.2
 VARIANTE = "triangular"     # "triangular" o "panal"
 MISMO_VOLUMEN = True
 MOSTRAR = True
+# --- figuras (lista completa de paneles en sph_common/figuras.py) ---
+FIGURAS = ["resumen", "superficie", "convergencia"]   # quita las que no quieras
+PANELES = ["particulas", "lambda", "densidad", "dnn",
+           "hist_dnn", "hist_lambda", "gradgamma", "tabla"]
+#   disponibles: particulas, lambda, densidad, gradgamma, gradgamma_sup, dnn,
+#                hist_dnn, hist_lambda, hist_densidad, hist_gradgamma,
+#                perfil_superficie, perfil_dnn, tabla
+SECCION = ("y", 0.0)      # solo 3D
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -29,4 +37,4 @@ if __name__ == "__main__":
     x = red_hexagonal(geom, DX, mismo_volumen=MISMO_VOLUMEN, variante=VARIANTE)
     nombre = "03_hexagonal" if VARIANTE == "triangular" else "03_panal"
     dist = DistribucionSPH(x, geom, nombre, DX, rho0=RHO0, h_factor=H_FACTOR)
-    procesar(dist, mostrar=MOSTRAR)
+    procesar(dist, paneles=PANELES, seccion=SECCION, figuras=FIGURAS, mostrar=MOSTRAR)

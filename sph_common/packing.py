@@ -118,7 +118,8 @@ class Pared:
 def empaquetar_colagrossi(geom, dx, h_factor=None, alpha=5e-3, cfl=1.0,
                           red_inicial_tipo="cubica", kernel="wendland",
                           max_iter=4000, min_iter=300, tol_ek=1e-7,
-                          cada=25, verbose=True):
+                          cada=25, verbose=True, x_inicial=None, repulsion=False,
+                          k_rep=None, corte_rep=0.95, fijar_capa=0.0):
     """Sistema de la ec. (2.16) del paper:
          du/dt = -beta grad(Gamma) - zeta u ,   dr/dt = u
     con particulas solidas FIJAS fuera del contorno (el contorno libre del
@@ -128,12 +129,18 @@ def empaquetar_colagrossi(geom, dx, h_factor=None, alpha=5e-3, cfl=1.0,
     Las capas fijas se colocan sobre curvas/superficies paralelas al contorno a
     dx/2, 3dx/2, 5dx/2... para que el borde quede liso (no en escalera).
     Parada: energia cinetica especifica < tol_ek * beta (paper: 1e-7..1e-8).
+
+    x_inicial : posiciones de partida (si no, una red 'red_inicial_tipo').
+    repulsion : anade la fuerza de repulsion de Negi (ec. 16 del paper 6),
+                activa solo a r < corte_rep*dx. Imprescindible con kernels
+                tipo cubic spline (W4), que sufren 'pairing instability'.
     """
     t0 = time.time()
     dim = geom.dim
     # h/dx: 2.0 en 2D (tabla 1 del paper); 1.4 en 3D (coste: ~3 veces menos vecinos)
     h_factor = h_factor or (2.0 if dim == 2 else 1.4)
-    x = red_inicial(geom, dx, red_inicial_tipo).copy()
+    x = (red_inicial(geom, dx, red_inicial_tipo) if x_inicial is None
+         else np.asarray(x_inicial, dtype=float)).copy()
     N = len(x)
     V0 = geom.volumen / N
     dxe = V0 ** (1.0 / dim)
@@ -157,6 +164,7 @@ def empaquetar_colagrossi(geom, dx, h_factor=None, alpha=5e-3, cfl=1.0,
     u = np.zeros_like(x)
     lv = ListaVerlet(rc, 0.5 * dxe, n_dest=N)
     pared = Pared(geom, 0.2 * dxe, 3.0 * dxe)
+    quietas = (geom.distancia_firmada(x) > -fijar_capa * dxe) if fijar_capa > 0 else None
     hist = {"iter": [], "Ek_especifica": [], "gradGamma_h_max": [], "corregidas_pared": []}
 
     for it in range(max_iter + 1):
@@ -167,7 +175,17 @@ def empaquetar_colagrossi(geom, dx, h_factor=None, alpha=5e-3, cfl=1.0,
         dW = ker.dWdr(rij, h)
         grad = V0 * sumar_por_particula(i, (dW / np.maximum(rij, 1e-12))[:, None] * xij, N)
         a = -beta * grad - zeta * u
+        if repulsion:
+            kr = k_rep if k_rep is not None else (0.004 if dim == 2 else 0.006) * dxe
+            cerca = rij < corte_rep * dxe
+            if np.any(cerca):
+                r_ = np.maximum(rij[cerca], 0.5 * dxe)
+                c_ = 2.0 * corte_rep * dxe / 3.0
+                f_ = np.maximum(12.0 * kr * (3 * c_ ** 2 / r_ ** 4 - 2 * c_ / r_ ** 3), 0.0)
+                a += sumar_por_particula(i[cerca], (f_ / rij[cerca])[:, None] * xij[cerca], N)
         u += dt * a
+        if quietas is not None:
+            u[quietas] = 0.0
         x += dt * u
         nc = pared.aplicar(x, u)
 
@@ -449,3 +467,19 @@ def empaquetar_wvt(geom, dx, h_factor=1.0, xi=4e-2, kappa=4e-4, chi=1e-2,
     info = dict(iteraciones=it, tiempo_s=time.time() - t0)
     _log(verbose, f"[WVT] terminado en {info['tiempo_s']:.1f} s")
     return x, hist, info
+
+
+# ==========================================================================
+# Pulido final con el kernel del solver (W4 de PAM-CRASH)
+# ==========================================================================
+def pulir_con_kernel(geom, x, dx, kernel="w4", h_factor=1.2, max_iter=1000,
+                     alpha=5e-3, tol_ek=1e-8, verbose=True):
+    """Segunda fase opcional: parte de una distribucion ya empaquetada (p.ej.
+    con Wendland) y la lleva al equilibrio del kernel con el que se va a
+    simular (W4 en PAM-CRASH), con la repulsion de Negi activada para que no
+    aparezcan parejas de particulas. Usa el sistema de Colagrossi."""
+    _log(verbose, f"[Pulido {kernel}] h/dx = {h_factor}, con repulsion")
+    return empaquetar_colagrossi(geom, dx, h_factor=h_factor, alpha=alpha, kernel=kernel,
+                                 max_iter=max_iter, min_iter=min(100, max_iter),
+                                 tol_ek=tol_ek, verbose=verbose, x_inicial=x,
+                                 repulsion=True)

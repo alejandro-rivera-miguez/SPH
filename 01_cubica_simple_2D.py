@@ -20,10 +20,18 @@ RHO0 = 9.5e-7             # densidad [kg/mm^3] (gelatina ~ 950 kg/m^3)
 H_FACTOR = 1.2            # h = H_FACTOR * dx  (smoothing length sugerido)
 DESFASE = (0.5, 0.5)      # posicion de la red respecto al origen (fraccion de dx)
 MOSTRAR = True
+# --- figuras (lista completa de paneles en sph_common/figuras.py) ---
+FIGURAS = ["resumen", "superficie", "convergencia"]   # quita las que no quieras
+PANELES = ["particulas", "lambda", "densidad", "dnn",
+           "hist_dnn", "hist_lambda", "gradgamma", "tabla"]
+#   disponibles: particulas, lambda, densidad, gradgamma, gradgamma_sup, dnn,
+#                hist_dnn, hist_lambda, hist_densidad, hist_gradgamma,
+#                perfil_superficie, perfil_dnn, tabla
+SECCION = ("y", 0.0)      # solo 3D
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     geom = crear_geometria(GEOMETRIA, **PARAMS_GEOM)
     x = red_cubica(geom, DX, desfase=DESFASE)
     dist = DistribucionSPH(x, geom, "01_cubica", DX, rho0=RHO0, h_factor=H_FACTOR)
-    procesar(dist, mostrar=MOSTRAR)
+    procesar(dist, paneles=PANELES, seccion=SECCION, figuras=FIGURAS, mostrar=MOSTRAR)

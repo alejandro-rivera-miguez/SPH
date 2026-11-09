@@ -93,7 +93,7 @@ def dibujar_corte(ax, dist, eje="z", pos=0.0, espesor=None, valores=None, cmap="
     ax.set_title(titulo or f"Corte {eje} = {pos:.3g} (+-{esp / 2:.3g})  n={sel.sum()}",
                  fontsize=9)
     if valores is not None and barra:
-        plt.colorbar(col, ax=ax, shrink=0.75, label=etiqueta)
+        ax.figure.colorbar(col, ax=ax, shrink=0.75, label=etiqueta)
     return col
 
 

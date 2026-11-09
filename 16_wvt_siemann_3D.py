@@ -30,6 +30,15 @@ MAX_ITER = 6000
 AGITAR = 0.5
 SEMILLA = 0
 MOSTRAR = True
+# --- figuras (lista completa de paneles en sph_common/figuras.py) ---
+FIGURAS = ["resumen", "superficie", "convergencia"]   # quita las que no quieras
+PANELES = ["vista3d", "dnn@y", "lambda@z", "densidad@x",
+           "hist_dnn", "hist_lambda", "perfil_dnn", "tabla"]
+#   disponibles: particulas, lambda, densidad, gradgamma, gradgamma_sup, dnn,
+#                hist_dnn, hist_lambda, hist_densidad, hist_gradgamma,
+#                perfil_superficie, perfil_dnn, tabla, vista3d
+#   los mapas son secciones: "lambda@z" corta por z = 0, "densidad@x=-50" por x = -50
+SECCION = ("y", 0.0)      # plano por defecto de los mapas sin @
 VISOR_INTERACTIVO = True
 ABRIR_HTML = False
 # ---------------------------------------------------------------------------
@@ -40,5 +49,5 @@ if __name__ == "__main__":
                                    chi=CHI, CR=CR, max_iter=MAX_ITER, agitar=AGITAR,
                                    semilla=SEMILLA)
     dist = DistribucionSPH(x, geom, "16_wvt", DX, rho0=RHO0, h_factor=H_FACTOR_SIM)
-    procesar(dist, hist=hist, mostrar=MOSTRAR, visor_interactivo=VISOR_INTERACTIVO,
+    procesar(dist, paneles=PANELES, seccion=SECCION, figuras=FIGURAS, hist=hist, mostrar=MOSTRAR, visor_interactivo=VISOR_INTERACTIVO,
              abrir_html=ABRIR_HTML)

@@ -35,6 +35,14 @@ MAX_ITER = 8000
 FREQ_PROY = 50
 VER_CAJA_COMPLETA = True    # dibuja tambien las particulas exteriores/congeladas
 MOSTRAR = True
+# --- figuras (lista completa de paneles en sph_common/figuras.py) ---
+FIGURAS = ["resumen", "superficie", "convergencia"]   # quita las que no quieras
+PANELES = ["particulas", "lambda", "densidad", "dnn",
+           "hist_dnn", "hist_lambda", "gradgamma", "tabla"]
+#   disponibles: particulas, lambda, densidad, gradgamma, gradgamma_sup, dnn,
+#                hist_dnn, hist_lambda, hist_densidad, hist_gradgamma,
+#                perfil_superficie, perfil_dnn, tabla
+SECCION = ("y", 0.0)      # solo 3D
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -54,4 +62,4 @@ if __name__ == "__main__":
         fig.tight_layout()
     dist = DistribucionSPH(x, geom, "05_negi", DX, rho0=RHO0, h_factor=H_FACTOR_SIM,
                            info={k: v for k, v in info.items() if np.isscalar(v)})
-    procesar(dist, hist=hist, mostrar=MOSTRAR)
+    procesar(dist, paneles=PANELES, seccion=SECCION, figuras=FIGURAS, hist=hist, mostrar=MOSTRAR)

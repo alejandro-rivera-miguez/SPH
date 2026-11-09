@@ -44,7 +44,7 @@ def dibujar_particulas(ax, dist, valores=None, cmap="viridis", vmin=None, vmax=N
     if titulo:
         ax.set_title(titulo, fontsize=10)
     if valores is not None and barra:
-        plt.colorbar(col, ax=ax, shrink=0.8, label=etiqueta)
+        ax.figure.colorbar(col, ax=ax, shrink=0.8, label=etiqueta)
     return col
 
 
@@ -162,6 +162,136 @@ def barras_comparacion(resultados, claves=None, guardar=None, mostrar=True):
         ax.grid(axis="y", alpha=0.3)
     for ax in axs.ravel()[len(claves):]:
         ax.axis("off")
+    fig.tight_layout()
+    if guardar:
+        fig.savefig(guardar, dpi=120)
+    if mostrar:
+        plt.show()
+    return fig
+
+
+# ==========================================================================
+# |grad Gamma|*h en la capa exterior (superficie de impacto)
+# ==========================================================================
+def _capa_exterior(dist, campos):
+    """Particulas de la primera capa (a menos de 1 dx de la superficie)."""
+    return campos["dist_borde"] > -1.0 * dist.dx_eq
+
+
+def _posicion_superficie(dist, mascara):
+    """Coordenada para recorrer la superficie: en 2D la longitud de arco sobre
+    el contorno (0 = punto mas a la izquierda); en 3D la coordenada x (eje)."""
+    x = dist.x[mascara]
+    if dist.dim == 3:
+        return x[:, 0], "x (eje del pajaro)"
+    v = dist.geom.contorno.v
+    seg = np.linalg.norm(np.roll(v, -1, 0) - v, axis=1)
+    s = np.concatenate([[0.0], np.cumsum(seg)[:-1]])
+    from scipy.spatial import cKDTree
+    _, k = cKDTree(v).query(x)
+    s = s[k]
+    s0 = s[np.argmin(x[:, 0])]
+    return (s - s0) % seg.sum(), "longitud de arco sobre el contorno"
+
+
+def panel_superficie(dist, r, campos, guardar=None, mostrar=True, vmax=None):
+    """Figura para justificar la calidad de la superficie:
+       (1) particulas de la capa exterior coloreadas por |grad Gamma|*h
+       (2) |grad Gamma|*h a lo largo de la superficie (perfil)
+       (3) histograma de |grad Gamma|*h en la capa exterior
+    En una superficie libre |grad Gamma|*h nunca es 0 (faltan vecinos fuera);
+    lo que importa es que sea UNIFORME: picos = superficie en escalera."""
+    capa = _capa_exterior(dist, campos)
+    g = campos["gradGamma_h"]
+    vmax = vmax or float(np.percentile(g[capa], 99))
+    cv = r.get("gradGamma_h_sup_CV_%", 100 * g[capa].std() / g[capa].mean())
+    fig = plt.figure(figsize=(16, 4.8))
+    fig.suptitle(f"{dist.metodo}: |grad Gamma|*h en la capa exterior   "
+                 f"media = {g[capa].mean():.3f}   CV = {cv:.1f} %", fontsize=11)
+    if dist.dim == 2:
+        ax = fig.add_subplot(1, 3, 1)
+        dibujar_particulas(ax, dist, color="#dddddd", barra=False, mascara=~capa)
+        dibujar_particulas(ax, dist, g, cmap="inferno", vmin=0, vmax=vmax, mascara=capa,
+                           etiqueta="|grad Gamma|*h", titulo="Capa exterior")
+    else:
+        ax = fig.add_subplot(1, 3, 1, projection="3d")
+        xs = dist.x[capa]
+        sc = ax.scatter(*xs.T, c=g[capa], cmap="inferno", vmin=0, vmax=vmax, s=6,
+                        depthshade=False)
+        ax.figure.colorbar(sc, ax=ax, shrink=0.7, label="|grad Gamma|*h")
+        lo, hi = dist.geom.bbox
+        c, rr = 0.5 * (lo + hi), 0.5 * np.max(hi - lo)
+        ax.set_xlim(c[0] - rr, c[0] + rr); ax.set_ylim(c[1] - rr, c[1] + rr)
+        ax.set_zlim(c[2] - rr, c[2] + rr)
+        ax.set_title("Capa exterior", fontsize=10)
+    ax = fig.add_subplot(1, 3, 2)
+    s, etiqueta = _posicion_superficie(dist, capa)
+    o = np.argsort(s)
+    ax.plot(s[o], g[capa][o], ".", ms=3, color="#cc3311")
+    ax.axhline(g[capa].mean(), color="k", lw=0.8, ls="--", label="media")
+    ax.set_ylim(0, vmax * 1.15)
+    ax.set_xlabel(etiqueta); ax.set_ylabel("|grad Gamma|*h")
+    ax.set_title("Perfil a lo largo de la superficie (plano = uniforme)", fontsize=10)
+    ax.legend(fontsize=8); ax.grid(alpha=0.3)
+    ax = fig.add_subplot(1, 3, 3)
+    ax.hist(g[capa], bins=40, range=(0, vmax * 1.15), color="#cc3311")
+    ax.set_xlabel("|grad Gamma|*h (capa exterior)")
+    ax.set_title("Distribucion (estrecha = uniforme)", fontsize=10)
+    fig.tight_layout()
+    if guardar:
+        fig.savefig(guardar, dpi=120)
+    if mostrar:
+        plt.show()
+    return fig
+
+
+def comparacion_superficie(lista, guardar=None, mostrar=True):
+    """lista = [(dist, r, campos), ...]. Una fila de mapas (misma escala de
+    color para todos) + perfiles superpuestos + barras del CV."""
+    n = len(lista)
+    g_all = np.concatenate([c["gradGamma_h"][_capa_exterior(d, c)] for d, r, c in lista])
+    vmax = float(np.percentile(g_all, 99))
+    fig = plt.figure(figsize=(3.6 * n, 8.5))
+    gs = fig.add_gridspec(2, n)
+    for k, (d, r, c) in enumerate(lista):
+        capa = _capa_exterior(d, c)
+        g = c["gradGamma_h"]
+        cv = 100 * g[capa].std() / g[capa].mean()
+        if d.dim == 2:
+            ax = fig.add_subplot(gs[0, k])
+            dibujar_particulas(ax, d, color="#dddddd", barra=False, mascara=~capa)
+            dibujar_particulas(ax, d, g, cmap="inferno", vmin=0, vmax=vmax, mascara=capa,
+                               barra=(k == n - 1), etiqueta="|grad Gamma|*h",
+                               titulo=f"{d.metodo}\nCV superficie = {cv:.1f} %")
+        else:
+            ax = fig.add_subplot(gs[0, k], projection="3d")
+            ax.scatter(*d.x[capa].T, c=g[capa], cmap="inferno", vmin=0, vmax=vmax, s=3,
+                       depthshade=False)
+            ax.set_title(f"{d.metodo}\nCV superficie = {cv:.1f} %", fontsize=10)
+            ax.set_axis_off()
+    nmit = max(1, n // 2)
+    ax = fig.add_subplot(gs[1, :nmit])
+    for d, r, c in lista:
+        capa = _capa_exterior(d, c)
+        s, etiqueta = _posicion_superficie(d, capa)
+        o = np.argsort(s)
+        ax.plot(s[o], c["gradGamma_h"][capa][o], ".", ms=2.5, label=d.metodo)
+    ax.set_xlabel(etiqueta); ax.set_ylabel("|grad Gamma|*h")
+    ax.set_ylim(0, vmax * 1.15)
+    ax.set_title("|grad Gamma|*h a lo largo de la superficie", fontsize=10)
+    ax.legend(fontsize=8, markerscale=4); ax.grid(alpha=0.3)
+    ax = fig.add_subplot(gs[1, nmit:])
+    nombres = [d.metodo for d, r, c in lista]
+    cvs = [100 * c["gradGamma_h"][_capa_exterior(d, c)].std() /
+           c["gradGamma_h"][_capa_exterior(d, c)].mean() for d, r, c in lista]
+    ax.bar(range(n), cvs, color=plt.cm.tab10(np.arange(n) % 10))
+    for k, v in enumerate(cvs):
+        ax.text(k, v, f"{v:.1f}", ha="center", va="bottom", fontsize=9)
+    ax.set_xticks(range(n)); ax.set_xticklabels(nombres, rotation=30, ha="right", fontsize=9)
+    ax.set_ylabel("CV de |grad Gamma|*h en superficie (%)")
+    ax.set_title("Irregularidad de la fuerza espuria en la superficie (menor = mejor)",
+                 fontsize=10)
+    ax.grid(axis="y", alpha=0.3)
     fig.tight_layout()
     if guardar:
         fig.savefig(guardar, dpi=120)

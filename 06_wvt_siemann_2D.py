@@ -36,6 +36,14 @@ MAX_ITER = 10000
 AGITAR = 0.5                # agitado inicial (fraccion de dx)
 SEMILLA = 0                 # cambia la semilla para otra distribucion aleatoria
 MOSTRAR = True
+# --- figuras (lista completa de paneles en sph_common/figuras.py) ---
+FIGURAS = ["resumen", "superficie", "convergencia"]   # quita las que no quieras
+PANELES = ["particulas", "lambda", "densidad", "dnn",
+           "hist_dnn", "hist_lambda", "gradgamma", "tabla"]
+#   disponibles: particulas, lambda, densidad, gradgamma, gradgamma_sup, dnn,
+#                hist_dnn, hist_lambda, hist_densidad, hist_gradgamma,
+#                perfil_superficie, perfil_dnn, tabla
+SECCION = ("y", 0.0)      # solo 3D
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
@@ -45,4 +53,4 @@ if __name__ == "__main__":
                                    semilla=SEMILLA)
     dist = DistribucionSPH(x, geom, "06_wvt", DX, rho0=RHO0, h_factor=H_FACTOR_SIM,
                            info=info)
-    procesar(dist, hist=hist, mostrar=MOSTRAR)
+    procesar(dist, paneles=PANELES, seccion=SECCION, figuras=FIGURAS, hist=hist, mostrar=MOSTRAR)

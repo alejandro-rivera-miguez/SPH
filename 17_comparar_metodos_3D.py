@@ -1,19 +1,28 @@
 """
 PASO 7 (3D) - Postprocesado y comparacion de metodos
-=====================================================
-Llama a todos los metodos (o carga los resultados ya guardados por los
-scripts 11-16 en resultados/) para la MISMA geometria y el MISMO dx, calcula
-las metricas de calidad y las compara:
+=======================================================
+Carga los resultados guardados por los scripts 11-16 en resultados/ (o los
+calcula si no existen) para la MISMA geometria y el MISMO dx, calcula las
+metricas con el kernel W4 y H_FACTOR_SIM (los de PAM-CRASH) y los compara.
 
-  * Lambda = lmin/lmax del tensor de inercia SPH (Siemann, paper 4)
-  * |grad Gamma| * h (Colagrossi, paper 5): "fuerza residual" en t = 0.
-    Es lo que provoca el reacomodo espurio de particulas al empezar el
-    calculo -> ruido en la presion.
-  * Error de densidad SPH (Negi, paper 6)
-  * Distancias entre vecinos, volumen de Voronoi (Siemann, figs. 5 y 6)
-  * Hueco y regularidad de la capa exterior: la superficie que golpea primero.
+Figuras que genera (en resultados/, prefijo comparacion3D_<geom>):
+  _empaquetados.png          rejilla 2x3 con los empaquetados de FIG_EMPAQUETADOS
+  _comparar_<metrica>.png    una por cada metrica de COMPARAR_METRICAS:
+                             fila superior = los empaquetados de COMPARAR_METODOS
+                             (2 o 3), fila inferior = la metrica con la misma escala
+                             de color, % frente al mejor y el mejor en VERDE
+  _tabla_diferencias.png     tabla: valor de cada metrica, % frente al mejor,
+                             mejor de cada fila en verde
+  _superficie.png            |grad Gamma|*h en la capa exterior de todos
+  _secciones.png, _barras.png, _histogramas.png   (las de siempre)
+Ademas: comparacion3D_<geom>.csv con todas las metricas y su % frente al mejor.
 
-Salidas en resultados/: comparacion3D_<geom>.csv, comparacion3D_<geom>_*.png
+Metricas para COMPARAR_METRICAS:
+  "densidad"       error de densidad SPH (criterio: desviacion tipica interior)
+  "gradgamma"      |grad Gamma|*h interior (criterio: maximo)
+  "gradgamma_sup"  |grad Gamma|*h en la capa exterior (criterio: CV)
+  "lambda"         Lambda interior (criterio: media, mayor es mejor)
+  "dnn"            distancia al vecino mas cercano (criterio: dispersion)
 """
 import os
 import csv
@@ -23,9 +32,11 @@ import matplotlib.pyplot as plt
 from sph_common import (crear_geometria_3d, DistribucionSPH, calcular_metricas,
                         red_sc, red_fcc3d, red_hcp, METRICAS_TABLA)
 from sph_common.packing import empaquetar_colagrossi, empaquetar_negi, empaquetar_wvt
-from sph_common.visor import barras_comparacion
+from sph_common.visor import barras_comparacion, comparacion_superficie
 from sph_common.visor3d import panel_comparacion_3d
 from sph_common.metricas import DESCRIPCION
+from sph_common.figuras import (figura_empaquetados, figura_comparar, figura_tabla_diferencias,
+                                imprimir_diferencias, mejor_indice, diferencia_frente_al_mejor)
 
 # ------------------------------- CONFIGURACION -----------------------------
 GEOMETRIA = "capsula"     # o "stl" para usar tu propio fichero (ver abajo)
@@ -35,23 +46,18 @@ PARAMS_GEOM = {}
 #           (pon el .stl en la carpeta stl; escala=1000 si esta en metros)
 DX = 6.65
 RHO0 = 1.1317e-6
-H_FACTOR_SIM = 1.2
-METODOS = ["11_cubica", "12_fcc", "13_hcp", "14_colagrossi", "15_negi", "16_wvt"]
+H_FACTOR_SIM = 1.2          # h/dx de PAM-CRASH (las metricas se calculan con el)
+METODOS = ['11_cubica', '12_fcc', '13_hcp', '14_colagrossi_V1', '14_colagrossi_V2', '15_negi', '16_wvt']
 USAR_GUARDADOS = True     # True: usa resultados/<geom>_<metodo>.npz si existe
 GUARDAR_NUEVOS = True     # guarda los que haya que calcular
 CARPETA = "resultados"
 MOSTRAR = True
+# --- figuras nuevas ---
+FIG_EMPAQUETADOS = ['11_cubica', '12_fcc', '13_hcp', '14_colagrossi_V2', '15_negi', '16_wvt']
+COMPARAR_METODOS = ['11_cubica', '14_colagrossi_V2', '16_wvt']   # 2 o 3
+COMPARAR_METRICAS = ["densidad", "gradgamma", "gradgamma_sup", "lambda"]   # una figura por metrica
+SECCION = ("y", 0.0)        # 3D: plano de corte (eje, posicion) de las figuras nuevas
 # ---------------------------------------------------------------------------
-
-# Para cada metrica: True si "mas alto es mejor", False si "mas bajo es mejor",
-# o un valor objetivo (float) si lo ideal es acercarse a ese valor.
-SENTIDO = {
-    "Lambda_min": True, "Lambda_media": True, "Lambda_P5": True, "%_Lambda>0.9": True,
-    "gradGamma_h_max": False, "gradGamma_h_media": False,
-    "err_rho_Linf_%": False, "err_rho_std_%": False, "err_rho_media_%": 0.0, "dnn_min": True,
-    "dnn_CV_%": False, "Vvor_max/min": 1.0, "Vvor_CV_%": False,
-    "hueco_sup_media": 0.5, "hueco_sup_max": 0.5, "capa_ext_CV_%": False,
-}
 
 
 def generar(metodo, geom):
@@ -61,8 +67,13 @@ def generar(metodo, geom):
         return red_fcc3d(geom, DX, mismo_volumen=True)
     if metodo == "13_hcp":
         return red_hcp(geom, DX, mismo_volumen=True)
-    if metodo == "14_colagrossi":
-        return empaquetar_colagrossi(geom, DX, max_iter=3000)[0]
+    if metodo == "14_colagrossi_V1":
+        return empaquetar_colagrossi(geom, DX, kernel="wendland", max_iter=3000)[0]
+    if metodo == "14_colagrossi_V2":
+        x = empaquetar_colagrossi(geom, DX, kernel="wendland", max_iter=3000)[0]
+        return empaquetar_colagrossi(geom, DX, h_factor=H_FACTOR_SIM, alpha=5e-2, kernel="w4",
+                                     x_inicial=x, repulsion=True, fijar_capa=1.0,
+                                     max_iter=1000, min_iter=200)[0]
     if metodo == "15_negi":
         return empaquetar_negi(geom, DX, max_iter=4000)[0]
     if metodo == "16_wvt":
@@ -87,56 +98,56 @@ def obtener(metodo, geom):
     return d
 
 
-def mejor(clave, valores):
-    s = SENTIDO.get(clave)
-    v = np.array(valores, dtype=float)
-    if s is None or np.all(~np.isfinite(v)):
-        return None
-    if s is True:
-        return int(np.nanargmax(v))
-    if s is False:
-        return int(np.nanargmin(v))
-    return int(np.nanargmin(np.abs(v - s)))
-
-
 if __name__ == "__main__":
     os.makedirs(CARPETA, exist_ok=True)
     geom = crear_geometria_3d(GEOMETRIA, **PARAMS_GEOM)
     lista, res = [], []
-    for m in METODOS:
-        d = obtener(m, geom)
+    for met in METODOS:
+        d = obtener(met, geom)
         r, c = calcular_metricas(d)
         lista.append((d, r, c))
         res.append(r)
 
     # --- tabla en consola (* = mejor valor de cada fila) --------------------
-    ancho = 15
-    print("\n" + "metrica".ljust(20) + "".join(m[:ancho - 1].rjust(ancho) for m in METODOS))
+    ancho = 17
+    print("\n" + "metrica".ljust(22) + "".join(x[:ancho - 1].rjust(ancho) for x in METODOS))
     for k in METRICAS_TABLA:
         vals = [r[k] for r in res]
-        b = mejor(k, vals)
+        b = mejor_indice(k, vals)
         fila = ""
-        for n, v in enumerate(vals):
+        for j, v in enumerate(vals):
             t = f"{v:d}" if isinstance(v, (int, np.integer)) else f"{v:.4g}"
-            fila += (t + ("*" if n == b else " ")).rjust(ancho)
-        print(k.ljust(20) + fila)
+            fila += (t + ("*" if j == b else " ")).rjust(ancho)
+        print(k.ljust(22) + fila)
     print("\n(*) mejor valor de la fila. Significado de cada metrica:")
     for k in METRICAS_TABLA:
-        print(f"   {k:<18s} {DESCRIPCION.get(k, '')}")
+        print(f"   {k:<22s} {DESCRIPCION.get(k, '')}")
+    imprimir_diferencias(lista)
 
-    # --- CSV ---------------------------------------------------------------
+    # --- CSV (valores y % frente al mejor) -----------------------------------
     ruta_csv = os.path.join(CARPETA, f"comparacion3D_{geom.nombre}.csv")
     with open(ruta_csv, "w", newline="") as f:
-        w = csv.writer(f, delimiter=";")
-        w.writerow(["metrica"] + METODOS + ["descripcion"])
+        wr = csv.writer(f, delimiter=";")
+        wr.writerow(["metrica"] + METODOS + ["mejor"] + [f"% {x}" for x in METODOS] + ["descripcion"])
         for k in METRICAS_TABLA:
-            w.writerow([k] + [f"{r[k]:.6g}" for r in res] + [DESCRIPCION.get(k, "")])
+            vals = [r[k] for r in res]
+            b, textos, pct = diferencia_frente_al_mejor(k, vals)
+            wr.writerow([k] + [f"{v:.6g}" for v in vals]
+                        + [METODOS[b] if b is not None else ""] + textos
+                        + [DESCRIPCION.get(k, "")])
     print("\nCSV ->", ruta_csv)
 
     # --- figuras -------------------------------------------------------------
     base = os.path.join(CARPETA, f"comparacion3D_{geom.nombre}")
+    figura_empaquetados(lista, FIG_EMPAQUETADOS, seccion=SECCION,
+                        guardar=base + "_empaquetados.png", mostrar=False)
+    for met in COMPARAR_METRICAS:
+        figura_comparar(lista, COMPARAR_METODOS, met, seccion=SECCION,
+                        guardar=base + f"_comparar_{met}.png", mostrar=False)
+    figura_tabla_diferencias(lista, guardar=base + "_tabla_diferencias.png", mostrar=False)
     panel_comparacion_3d(lista, guardar=base + "_secciones.png", mostrar=False)
     barras_comparacion(res, guardar=base + "_barras.png", mostrar=False)
+    comparacion_superficie(lista, guardar=base + "_superficie.png", mostrar=False)
 
     fig, axs = plt.subplots(1, 3, figsize=(16, 4.5))
     for d, r, c in lista:

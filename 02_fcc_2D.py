@@ -24,10 +24,18 @@ H_FACTOR = 1.2
 MISMO_VOLUMEN = True
 DESFASE = (0.5, 0.5)
 MOSTRAR = True
+# --- figuras (lista completa de paneles en sph_common/figuras.py) ---
+FIGURAS = ["resumen", "superficie", "convergencia"]   # quita las que no quieras
+PANELES = ["particulas", "lambda", "densidad", "dnn",
+           "hist_dnn", "hist_lambda", "gradgamma", "tabla"]
+#   disponibles: particulas, lambda, densidad, gradgamma, gradgamma_sup, dnn,
+#                hist_dnn, hist_lambda, hist_densidad, hist_gradgamma,
+#                perfil_superficie, perfil_dnn, tabla
+SECCION = ("y", 0.0)      # solo 3D
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     geom = crear_geometria(GEOMETRIA, **PARAMS_GEOM)
     x = red_fcc(geom, DX, mismo_volumen=MISMO_VOLUMEN, desfase=DESFASE)
     dist = DistribucionSPH(x, geom, "02_fcc", DX, rho0=RHO0, h_factor=H_FACTOR)
-    procesar(dist, mostrar=MOSTRAR)
+    procesar(dist, paneles=PANELES, seccion=SECCION, figuras=FIGURAS, mostrar=MOSTRAR)

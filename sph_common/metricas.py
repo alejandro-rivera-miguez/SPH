@@ -42,7 +42,7 @@ def _area_poligono(v):
     return 0.5 * abs(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
 
 
-def calcular_metricas(dist, kernel="wendland", n_vecinos_espaciado=6, voronoi=True):
+def calcular_metricas(dist, kernel="w4", n_vecinos_espaciado=6, voronoi=True):
     x = dist.x
     N, dim = x.shape
     geom = dist.geom
@@ -138,6 +138,9 @@ def calcular_metricas(dist, kernel="wendland", n_vecinos_espaciado=6, voronoi=Tr
         "%_Lambda>0.9": 100 * np.mean(li > 0.9) if len(li) else np.nan,
         "gradGamma_h_max": grad_gamma_h[interior].max() if interior.any() else np.nan,
         "gradGamma_h_media": grad_gamma_h[interior].mean() if interior.any() else np.nan,
+        "gradGamma_h_sup_media": grad_gamma_h[capa_ext].mean() if capa_ext.any() else np.nan,
+        "gradGamma_h_sup_CV_%": (100 * grad_gamma_h[capa_ext].std() / grad_gamma_h[capa_ext].mean()
+                                 if capa_ext.any() else np.nan),
         "err_rho_Linf_%": 100 * np.abs(rho_rel[interior] - 1).max() if interior.any() else np.nan,
         "err_rho_std_%": 100 * rho_rel[interior].std() if interior.any() else np.nan,
         "err_rho_media_%": 100 * (rho_rel[interior].mean() - 1) if interior.any() else np.nan,
@@ -155,7 +158,7 @@ def calcular_metricas(dist, kernel="wendland", n_vecinos_espaciado=6, voronoi=Tr
     campos = {
         "Lambda": lam, "rho_rel": rho_rel, "gradGamma_h": grad_gamma_h,
         "dnn": dnn, "dmedia": dmedia, "vecinos": n_vec, "Vvor": vor_rel,
-        "interior": interior, "dist_borde": dfirm, "hueco": gap,
+        "interior": interior, "dist_borde": dfirm, "hueco": gap, "capa_ext": capa_ext,
     }
     return r, campos
 
@@ -169,6 +172,8 @@ DESCRIPCION = {
     "%_Lambda>0.9": "% de particulas interiores con Lambda > 0.9",
     "gradGamma_h_max": "max |grad Gamma|*h interior (0 = equilibrio)  [paper 5]",
     "gradGamma_h_media": "media |grad Gamma|*h interior  [paper 5]",
+    "gradGamma_h_sup_media": "media de |grad Gamma|*h en la capa exterior",
+    "gradGamma_h_sup_CV_%": "irregularidad de |grad Gamma|*h en la capa exterior (0 = uniforme)",
     "err_rho_Linf_%": "error max de densidad SPH interior  [paper 6]",
     "err_rho_std_%": "desviacion tipica de la densidad SPH interior",
     "err_rho_media_%": "sesgo medio de densidad interior (pre-compresion inicial)",
@@ -183,7 +188,8 @@ DESCRIPCION = {
 }
 
 METRICAS_TABLA = ["N", "Lambda_min", "Lambda_media", "Lambda_P5", "%_Lambda>0.9",
-                  "gradGamma_h_max", "gradGamma_h_media", "err_rho_Linf_%",
+                  "gradGamma_h_max", "gradGamma_h_media",
+                  "gradGamma_h_sup_media", "gradGamma_h_sup_CV_%", "err_rho_Linf_%",
                   "err_rho_std_%", "err_rho_media_%", "dnn_min", "dnn_CV_%", "vecinos_media",
                   "Vvor_max/min", "Vvor_CV_%", "hueco_sup_media", "hueco_sup_max",
                   "capa_ext_CV_%"]
